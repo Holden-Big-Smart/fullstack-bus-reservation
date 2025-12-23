@@ -39,13 +39,14 @@ const BusDrawingBoard = ({
 
   // 初始化或加载数据
   useEffect(() => {
+    // 情况 1: 如果有表单传来的初始数据，优先使用它
     if (initialGrid && initialGrid.length > 0) {
-      // 如果有预设网格，直接加载并计算编号
       setGrid(recalculateLabels(initialGrid));
       setRows(initialGrid.length);
       setCols(initialGrid[0].length);
-    } else {
-      // 否则创建空网格
+    }
+    // 情况 2: 如果没有初始数据，则根据当前的 rows 和 cols 生成空网格
+    else {
       const newGrid = Array(rows)
         .fill()
         .map((_, y) =>
@@ -61,8 +62,8 @@ const BusDrawingBoard = ({
         );
       setGrid(newGrid);
     }
-  }, [initialGrid]); // 注意这里只在 initialGrid 改变时触发，避免手动调节行列时被覆盖
-  // 核心逻辑：自动计算双编号系统
+    // ✨ 核心修复：添加 rows 和 cols 到依赖数组中
+  }, [initialGrid, rows, cols]);
 
   const recalculateLabels = (currentGrid) => {
     let seatCounter = 0;
