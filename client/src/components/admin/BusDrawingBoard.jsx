@@ -35,18 +35,18 @@ const BusDrawingBoard = ({
   const [cols, setCols] = useState(initialCols);
   const [grid, setGrid] = useState([]);
   const [activeTool, setActiveTool] = useState("seat");
-  const [isDrawing, setIsDrawing] = useState(false);
+  // ✨ 新增：用于框选逻辑的状态
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState(null); // {x, y}
+  const [gridSnapshot, setGridSnapshot] = useState(null); // 按下时的网格快照
 
-  // 初始化或加载数据
+  // 初始化逻辑 (保持之前提供的无损缩放 useEffect 或简单初始化)
   useEffect(() => {
-    // 情况 1: 如果有表单传来的初始数据，优先使用它
     if (initialGrid && initialGrid.length > 0) {
       setGrid(recalculateLabels(initialGrid));
       setRows(initialGrid.length);
       setCols(initialGrid[0].length);
-    }
-    // 情况 2: 如果没有初始数据，则根据当前的 rows 和 cols 生成空网格
-    else {
+    } else {
       const newGrid = Array(rows)
         .fill()
         .map((_, y) =>
@@ -62,8 +62,8 @@ const BusDrawingBoard = ({
         );
       setGrid(newGrid);
     }
-    // ✨ 核心修复：添加 rows 和 cols 到依赖数组中
   }, [initialGrid]);
+
   // 2. 核心函数：无损调整网格尺寸
   const resizeGrid = (newRows, newCols) => {
     setGrid((prevGrid) => {
@@ -117,27 +117,53 @@ const BusDrawingBoard = ({
     return updatedGrid;
   };
 
-  // 处理涂色动作
-  const handlePaint = (x, y) => {
-    const newGrid = [...grid];
-    if (newGrid[y][x].type === activeTool) return; // 避免重复更新
+  // ✨ 核心功能：计算并应用矩阵框选
+  const applyBoxSelect = (currentX, currentY) => {
+    if (!dragStart || !gridSnapshot) return;
 
-    newGrid[y][x] = { ...newGrid[y][x], type: activeTool };
-    const labeledGrid = recalculateLabels(newGrid);
-    setGrid(labeledGrid);
+    const startX = Math.min(dragStart.x, currentX);
+    const endX = Math.max(dragStart.x, currentX);
+    const startY = Math.min(dragStart.y, currentY);
+    const endY = Math.max(dragStart.y, currentY);
+
+    // 基于快照生成新网格，避免拖拽过程中的“涂鸦叠加”
+    const nextGrid = gridSnapshot.map((row, y) =>
+      row.map((cell, x) => {
+        if (x >= startX && x <= endX && y >= startY && y <= endY) {
+          return { ...cell, type: activeTool };
+        }
+        return cell;
+      })
+    );
+
+    setGrid(recalculateLabels(nextGrid));
   };
 
-  const onMouseDown = (x, y) => {
-    setIsDrawing(true);
-    handlePaint(x, y);
+  const handleMouseDown = (x, y) => {
+    setIsDragging(true);
+    setDragStart({ x, y });
+    setGridSnapshot([...grid.map((row) => [...row])]); // 深度克隆当前网格作为快照
+
+    // 点击单点也生效
+    const newGrid = grid.map((row, ry) =>
+      row.map((cell, cx) =>
+        ry === y && cx === x ? { ...cell, type: activeTool } : cell
+      )
+    );
+    setGrid(recalculateLabels(newGrid));
   };
 
-  const onMouseEnter = (x, y) => {
-    if (isDrawing) handlePaint(x, y);
+  const handleMouseEnter = (x, y) => {
+    if (isDragging) {
+      applyBoxSelect(x, y);
+    }
   };
 
-  const stopDrawing = () => setIsDrawing(false);
-
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setDragStart(null);
+    setGridSnapshot(null);
+  };
   // 统计信息
   const seatCount = grid.flat().filter((c) => c.type === "seat").length;
 
@@ -152,9 +178,9 @@ const BusDrawingBoard = ({
 
   return (
     <div
-      className="flex flex-col h-full bg-white rounded-lg shadow-lg overflow-hidden"
-      onMouseLeave={stopDrawing}
-      onMouseUp={stopDrawing}
+      className="flex flex-col h-full bg-white select-none"
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp} // 鼠标离开画板区域也停止拖拽
     >
       {/* 顶部工具栏 */}
       <div className="p-4 border-b bg-slate-50 flex items-center justify-between flex-wrap gap-4">
@@ -208,28 +234,23 @@ const BusDrawingBoard = ({
       {/* 中部画板 */}
       <div className="flex-1 overflow-auto p-12 bg-slate-200 flex justify-center items-start">
         <div
-          className="bg-white p-8 rounded-xl shadow-2xl border-4 border-slate-400 relative transition-all duration-300"
+          className="bg-white p-8 rounded-xl shadow-2xl border-4 border-slate-400 relative"
           style={{
             display: "grid",
-            gridTemplateColumns: `repeat(${cols}, 1fr)`, // 这里会随状态实时更新
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
             gap: "4px",
           }}
         >
-          {/* 车头装饰 */}
-          <div className="absolute -top-12 left-0 right-0 text-center font-bold text-slate-400 tracking-[1em] uppercase text-xs">
-            --- 车头 FRONT ---
-          </div>
-
           {grid.map((row, y) =>
             row.map((cell, x) => (
               <div
                 key={`${y}-${x}`}
-                onMouseDown={() => onMouseDown(x, y)}
-                onMouseEnter={() => onMouseEnter(x, y)}
+                onMouseDown={() => handleMouseDown(x, y)}
+                onMouseEnter={() => handleMouseEnter(x, y)}
                 className={clsx(
-                  "w-14 h-14 rounded-md border flex flex-col items-center justify-center cursor-crosshair transition-colors select-none relative group",
+                  "w-14 h-14 rounded-md border flex flex-col items-center justify-center cursor-crosshair transition-all duration-75 relative",
                   cell.type === "seat" &&
-                    "bg-green-500 border-green-600 text-white",
+                    "bg-green-500 border-green-600 text-white scale-100",
                   cell.type === "driver" &&
                     "bg-blue-600 border-blue-700 text-white",
                   cell.type === "aisle" && "bg-cyan-100 border-cyan-200",
@@ -239,11 +260,11 @@ const BusDrawingBoard = ({
               >
                 {cell.type === "seat" && (
                   <>
-                    <span className="text-[9px] leading-none absolute top-1 font-bold opacity-80">
+                    <span className="text-[9px] absolute top-1 font-bold opacity-80">
                       {cell.labelGrid}
                     </span>
                     <User size={18} />
-                    <span className="text-[11px] leading-none mt-1 font-black">
+                    <span className="text-[11px] mt-1 font-black">
                       {cell.labelSeq}
                     </span>
                   </>
@@ -262,22 +283,14 @@ const BusDrawingBoard = ({
 
       {/* 底部状态栏 */}
       <div className="p-4 bg-slate-800 text-white flex justify-between items-center px-8">
-        <div className="flex gap-6 items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-green-500 rounded"></div>
-            <span className="text-sm">
-              当前座位数:{" "}
-              <span className="font-bold text-lg text-green-400">
-                {seatCount}
-              </span>
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 italic flex items-center gap-1">
-            <Info size={14} /> 按住鼠标左键并拖拽可以快速涂色
+        <div className="flex items-center gap-4">
+          <span className="text-sm">
+            当前座位数:{" "}
+            <span className="text-green-400 font-bold">{seatCount}</span>
+          </span>
+          <p className="text-xs text-slate-400 flex items-center gap-1">
+            <Info size={14} /> 提示：点击并【斜向拖拽】可快速创建矩形座位区
           </p>
-        </div>
-        <div className="text-xs text-slate-400">
-          双编号预览: [空间编号] + [顺序编号]
         </div>
       </div>
     </div>
