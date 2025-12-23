@@ -22,6 +22,18 @@ const busSchema = new mongoose.Schema({
   name: { type: String, required: true }, // 车牌或班次名
   rows: { type: Number, required: true }, // 总排数
   cols: { type: Number, required: true }, // 总列数
+  // 核心：存储绘图后的矩阵数据
+  layout: [{
+    x: Number,          // 横坐标
+    y: Number,          // 纵坐标
+    type: { 
+      type: String, 
+      enum: ['seat', 'aisle', 'driver', 'door', 'empty'], 
+      default: 'empty' 
+    },
+    labelGrid: String,  // 编号1: 空间编号 (1A, 1B...)
+    labelSeq: String,   // 编号2: 逻辑序号 (01, 02...)
+  }],
   aisleCols: [Number],    // 走廊位置 (例如 [2] 表示第2列后面是走廊)
   driverPos: {            // 司机位置
     type: String, 
