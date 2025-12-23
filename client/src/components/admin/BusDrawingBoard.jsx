@@ -63,7 +63,40 @@ const BusDrawingBoard = ({
       setGrid(newGrid);
     }
     // ✨ 核心修复：添加 rows 和 cols 到依赖数组中
-  }, [initialGrid, rows, cols]);
+  }, [initialGrid]);
+  // 2. 核心函数：无损调整网格尺寸
+  const resizeGrid = (newRows, newCols) => {
+    setGrid((prevGrid) => {
+      const updatedGrid = Array(newRows)
+        .fill()
+        .map((_, y) =>
+          Array(newCols)
+            .fill()
+            .map((_, x) => {
+              // 如果旧网格中这个坐标有数据，则保留它
+              if (prevGrid[y] && prevGrid[y][x]) {
+                return { ...prevGrid[y][x], x, y }; // 确保坐标信息同步
+              }
+              // 否则，创建一个新的空格子
+              return { x, y, type: "empty", labelGrid: "", labelSeq: "" };
+            })
+        );
+      return recalculateLabels(updatedGrid);
+    });
+  };
+
+  // 3. 处理输入框变化
+  const handleRowsChange = (val) => {
+    const newR = Math.max(1, Number(val)); // 至少 1 行
+    setRows(newR);
+    resizeGrid(newR, cols);
+  };
+
+  const handleColsChange = (val) => {
+    const newC = Math.max(1, Number(val)); // 至少 1 列
+    setCols(newC);
+    resizeGrid(rows, newC);
+  };
 
   const recalculateLabels = (currentGrid) => {
     let seatCounter = 0;
@@ -147,20 +180,20 @@ const BusDrawingBoard = ({
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm">
-            <span>行:</span>
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
+            <span>行(Rows):</span>
             <input
               type="number"
               value={rows}
-              onChange={(e) => setRows(Number(e.target.value))}
-              className="w-12 border rounded px-1"
+              onChange={(e) => handleRowsChange(e.target.value)}
+              className="w-16 border-2 border-slate-200 rounded px-2 py-1 focus:border-blue-500 outline-none"
             />
-            <span>列:</span>
+            <span className="ml-2">列(Cols):</span>
             <input
               type="number"
               value={cols}
-              onChange={(e) => setCols(Number(e.target.value))}
-              className="w-12 border rounded px-1"
+              onChange={(e) => handleColsChange(e.target.value)}
+              className="w-16 border-2 border-slate-200 rounded px-2 py-1 focus:border-blue-500 outline-none"
             />
           </div>
           <button
@@ -175,10 +208,10 @@ const BusDrawingBoard = ({
       {/* 中部画板 */}
       <div className="flex-1 overflow-auto p-12 bg-slate-200 flex justify-center items-start">
         <div
-          className="bg-white p-8 rounded-xl shadow-2xl border-4 border-slate-400 relative"
+          className="bg-white p-8 rounded-xl shadow-2xl border-4 border-slate-400 relative transition-all duration-300"
           style={{
             display: "grid",
-            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gridTemplateColumns: `repeat(${cols}, 1fr)`, // 这里会随状态实时更新
             gap: "4px",
           }}
         >
